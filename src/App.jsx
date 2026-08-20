@@ -273,6 +273,7 @@ function AppPrincipal({ avisoInicial }) {
   const [categoria, setCategoria] = useState("");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
+  const [confirmandoRemover, setConfirmandoRemover] = useState(null);
 
   const chave = useMemo(() => `lancamentos:${chaveDoMes(mesAtual)}`, [mesAtual]);
 
@@ -327,8 +328,17 @@ function AppPrincipal({ avisoInicial }) {
     }
   }
 
-  function remover(id) {
+  function pedirRemocao(id) {
+    setConfirmandoRemover(id);
+  }
+
+  function confirmarRemocao(id) {
     salvar(lancamentos.filter((l) => l.id !== id));
+    setConfirmandoRemover(null);
+  }
+
+  function cancelarRemocao() {
+    setConfirmandoRemover(null);
   }
 
   function mudarMes(delta) {
@@ -444,24 +454,50 @@ function AppPrincipal({ avisoInicial }) {
             <ul className="space-y-2">
               {lancamentos.map((l) => (
                 <li key={l.id} className="vidro flex items-center justify-between px-3 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide"
-                        style={{ background: l.tipo === "ganho" ? "rgba(52,211,153,0.15)" : "rgba(251,113,133,0.15)", color: l.tipo === "ganho" ? "#6EE7B7" : "#FDA4AF" }}>
-                        {l.tipo === "ganho" ? "Ganho" : "Gasto"}
-                      </span>
-                      <span className="text-sm font-medium truncate">{l.categoria}</span>
+                  {confirmandoRemover === l.id ? (
+                    <div className="w-full flex items-center justify-between gap-2">
+                      <span className="text-xs" style={{ color: "#FDA4AF" }}>Excluir este lançamento?</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => confirmarRemocao(l.id)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                          style={{ background: "rgba(251,113,133,0.18)", color: "#FDA4AF" }}
+                        >
+                          Sim, excluir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelarRemocao}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                          style={{ background: "rgba(255,255,255,0.06)", color: "#F5F5F7" }}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
-                    {l.descricao && <p className="text-xs mt-0.5 truncate" style={{ color: "#8B8D98" }}>{l.descricao}</p>}
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="fonte-numero text-sm" style={{ color: l.tipo === "ganho" ? "#6EE7B7" : "#FDA4AF", fontWeight: 600 }}>
-                      {l.tipo === "ganho" ? "+" : "−"} {formatarMoeda(l.valor)}
-                    </span>
-                    <button onClick={() => remover(l.id)} aria-label="Remover lançamento" className="p-1 rounded hover:opacity-60 transition" style={{ color: "#5C5E6B" }}>
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
+                  ) : (
+                    <>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wide"
+                            style={{ background: l.tipo === "ganho" ? "rgba(52,211,153,0.15)" : "rgba(251,113,133,0.15)", color: l.tipo === "ganho" ? "#6EE7B7" : "#FDA4AF" }}>
+                            {l.tipo === "ganho" ? "Ganho" : "Gasto"}
+                          </span>
+                          <span className="text-sm font-medium truncate">{l.categoria}</span>
+                        </div>
+                        {l.descricao && <p className="text-xs mt-0.5 truncate" style={{ color: "#8B8D98" }}>{l.descricao}</p>}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="fonte-numero text-sm" style={{ color: l.tipo === "ganho" ? "#6EE7B7" : "#FDA4AF", fontWeight: 600 }}>
+                          {l.tipo === "ganho" ? "+" : "−"} {formatarMoeda(l.valor)}
+                        </span>
+                        <button onClick={() => pedirRemocao(l.id)} aria-label="Remover lançamento" className="p-1 rounded hover:opacity-60 transition" style={{ color: "#5C5E6B" }}>
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
