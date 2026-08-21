@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Plus, Trash2, ChevronLeft, ChevronRight, Wallet, Lock, Eye, EyeOff, ShieldCheck, PieChart, Trophy } from "lucide-react";
+import { Plus, Trash2, ChevronLeft, ChevronRight, Wallet, Lock, Eye, EyeOff, ShieldCheck, PieChart, Trophy, Download, Upload } from "lucide-react";
 import { storage, armazenamentoDisponivel } from "./lib/storage.js";
 
 const MESES = [
@@ -274,6 +274,9 @@ function AppPrincipal({ avisoInicial }) {
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
   const [confirmandoRemover, setConfirmandoRemover] = useState(null);
+  const [confirmandoRestaurar, setConfirmandoRestaurar] = useState(false);
+  const [mensagemBackup, setMensagemBackup] = useState(null);
+  const inputRestaurarRef = useRef(null);
 
   const chave = useMemo(() => `lancamentos:${chaveDoMes(mesAtual)}`, [mesAtual]);
 
@@ -347,6 +350,84 @@ function AppPrincipal({ avisoInicial }) {
     setMesAtual(d);
   }
 
+  // Backup: junta os lançamentos de todos os meses guardados neste navegador
+  // num único arquivo .json que a pessoa pode baixar e guardar em outro lugar
+  // (Google Drive, e-mail, WhatsApp para si mesma, etc).
+  async function baixarBackup() {
+    setMensagemBackup(null);
+    try {
+      const listagem = await storage.list("lancamentos:", false);
+      const dados = {};
+      for (const chaveItem of listagem.keys) {
+        try {
+          const resultado = await storage.get(chaveItem, false);
+          dados[chaveItem] = JSON.parse(resultado.value);
+        } catch (e) {
+          // se um mês falhar ao ler, seguimos para os outros
+        }
+      }
+      const conteudo = {
+        app: "Caderno de Contas",
+        geradoEm: new Date().toISOString(),
+        dados,
+      };
+      const blob = new Blob([JSON.stringify(conteudo, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const dataFormatada = new Date().toISOString().slice(0, 10);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `caderno-de-contas-backup-${dataFormatada}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setMensagemBackup({ tipo: "ok", texto: "Backup baixado. Salve esse arquivo em outro lugar seguro (Google Drive, e-mail, etc)." });
+    } catch (e) {
+      setMensagemBackup({ tipo: "erro", texto: "Não consegui gerar o backup agora. Tente de novo." });
+    }
+  }
+
+  function abrirSeletorRestaurar() {
+    setConfirmandoRestaurar(true);
+  }
+
+  function cancelarRestaurar() {
+    setConfirmandoRestaurar(false);
+  }
+
+  function confirmarEscolherArquivo() {
+    setConfirmandoRestaurar(false);
+    inputRestaurarRef.current?.click();
+  }
+
+  async function restaurarArquivo(e) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    setMensagemBackup(null);
+    try {
+      const texto = await arquivo.text();
+      const conteudo = JSON.parse(texto);
+      const dados = conteudo.dados || conteudo; // aceita tanto o formato novo quanto um json solto de meses
+      let restaurados = 0;
+      for (const [chaveItem, valorItem] of Object.entries(dados)) {
+        if (!chaveItem.startsWith("lancamentos:")) continue;
+        await storage.set(chaveItem, JSON.stringify(valorItem), false);
+        restaurados++;
+      }
+      if (restaurados === 0) {
+        setMensagemBackup({ tipo: "erro", texto: "Esse arquivo não parece ser um backup válido do Caderno de Contas." });
+        return;
+      }
+      // recarrega o mês que está sendo exibido agora, caso tenha sido restaurado
+      const resultado = await storage.get(chave, false).catch(() => null);
+      setLancamentos(resultado ? JSON.parse(resultado.value) : []);
+      setMensagemBackup({ tipo: "ok", texto: `Backup restaurado (${restaurados} mês(es)). Seus lançamentos foram recuperados.` });
+    } catch (e) {
+      setMensagemBackup({ tipo: "erro", texto: "Não consegui ler esse arquivo. Confirme que é um backup gerado pelo próprio app." });
+    }
+  }
+
   const totalGanhos = lancamentos.filter((l) => l.tipo === "ganho").reduce((s, l) => s + l.valor, 0);
   const totalGastos = lancamentos.filter((l) => l.tipo === "gasto").reduce((s, l) => s + l.valor, 0);
   const saldo = totalGanhos - totalGastos;
@@ -356,7 +437,7 @@ function AppPrincipal({ avisoInicial }) {
     <div className="min-h-screen w-full relative fonte-corpo" style={{ color: "#F5F5F7" }}>
       <Fundo />
       <div className="max-w-3xl mx-auto px-4 py-8">
-        <header className="mb-6 flex items-center justify-between">
+        <header className="mb-4 flex items-center justify-between">
           <div>
             <h1 className="fonte-titulo text-2xl" style={{ fontWeight: 600 }}>Caderno de Contas</h1>
             <p className="text-sm mt-0.5" style={{ color: "#8B8D98" }}>Seus ganhos e gastos, num lugar só.</p>
@@ -369,6 +450,63 @@ function AppPrincipal({ avisoInicial }) {
             <ShieldCheck size={15} color="#0A0A0F" />
           </div>
         </header>
+
+        <div className="flex gap-2 mb-4">
+          <button
+            type="button"
+            onClick={baixarBackup}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium transition hover:opacity-90"
+            style={{ background: "rgba(34,211,238,0.12)", border: "1px solid rgba(34,211,238,0.3)", color: "#67E8F9" }}
+          >
+            <Download size={14} /> Baixar backup
+          </button>
+          <button
+            type="button"
+            onClick={abrirSeletorRestaurar}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium transition hover:opacity-90"
+            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.12)", color: "#8B8D98" }}
+          >
+            <Upload size={14} /> Restaurar backup
+          </button>
+          <input
+            ref={inputRestaurarRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={restaurarArquivo}
+            className="hidden"
+          />
+        </div>
+
+        {confirmandoRestaurar && (
+          <div
+            className="rounded-xl px-3 py-3 mb-4 text-xs"
+            style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", color: "#FDE68A" }}
+          >
+            <p className="mb-2">Isso vai substituir os lançamentos dos meses que estiverem no arquivo de backup. Continuar?</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={confirmarEscolherArquivo} className="px-3 py-1.5 rounded-lg" style={{ background: "rgba(251,191,36,0.2)", color: "#FDE68A" }}>
+                Sim, escolher arquivo
+              </button>
+              <button type="button" onClick={cancelarRestaurar} className="px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.06)", color: "#F5F5F7" }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mensagemBackup && (
+          <div
+            className="rounded-xl px-3 py-2 mb-4 text-xs flex items-start justify-between gap-2"
+            style={{
+              background: mensagemBackup.tipo === "ok" ? "rgba(52,211,153,0.1)" : "rgba(251,113,133,0.1)",
+              border: `1px solid ${mensagemBackup.tipo === "ok" ? "rgba(52,211,153,0.3)" : "rgba(251,113,133,0.3)"}`,
+              color: mensagemBackup.tipo === "ok" ? "#6EE7B7" : "#FDA4AF",
+            }}
+          >
+            <span>{mensagemBackup.texto}</span>
+            <button onClick={() => setMensagemBackup(null)} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Fechar mensagem">✕</button>
+          </div>
+        )}
 
         {aviso && (
           <div
